@@ -15,4 +15,5 @@ export const users = pgTable("users", {
   avgSteps: doublePrecision("avg_steps").notNull().default(0),
   avgLuck: doublePrecision("avg_luck").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  apiKey: text().notNull().unique()
 });

@@ -5,7 +5,14 @@ import { Pool } from "pg";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import * as Sentry from "@sentry/bun";
-export type DatabaseType = NodePgDatabase<Record<string, never>> & { $client: Pool };
+import { uuidle } from "./handlers/uuidle";
+import { uuids } from "./schema/uuids";
+import { desc } from "drizzle-orm";
+import schedule from "./handlers/schedule";
+
+export type DatabaseType = NodePgDatabase<Record<string, never>> & {
+  $client: Pool;
+};
 let sentryEnabled = false;
 
 const db = drizzle({
@@ -22,7 +29,7 @@ await migrate(db, {
 if (process.env.SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
-    release: process.env.SENTRY_NAME || "logpheus",
+    release: process.env.SENTRY_NAME || "uuidle",
     integrations: [],
     tracesSampleRate: 0,
     sendDefaultPii: true,
@@ -35,6 +42,31 @@ const app = new Elysia()
   .use(APIRoutes)
   .get("/healthcheck", "Chat, I think we are good probably?")
   .listen(5000);
+
+uuidle.db = db;
+const [uuid] = await db
+  .select()
+  .from(uuids)
+  .orderBy(desc(uuids.createdAt))
+  .limit(1);
+
+if (!uuid) {
+  const newUUID = crypto.randomUUID();
+  await db.insert(uuids).values({
+    id: newUUID,
+  });
+  uuidle.uuid = {
+    id: newUUID,
+    createdAt: new Date(),
+  };
+} else {
+  uuidle.uuid = {
+    id: uuid.id,
+    createdAt: uuid.createdAt,
+  };
+}
+
+schedule();
 
 console.log(
   `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`,
